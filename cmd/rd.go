@@ -194,6 +194,54 @@ type RdFlag_Ls struct {
 
 // 操作 - 枚举
 func Exec_RdDaily_Ls(input *daily.InputContext) {
+	notes := rd_ls(input, true)
+	for _, v := range notes {
+		v.Print()
+	}
+}
+
+// 操作 - 编辑
+func Exec_RdDaily_Edit(input *daily.InputContext) {
+	rd_edit(input)
+}
+
+// 操作 - 删除
+func Exec_RdDaily_Del(input *daily.InputContext) {
+	var (
+		err       error
+		dailyFile string
+	)
+	split := strings.Repeat("#", daily.LineLen)
+	if dailyFile, err = rd_del(input); err != nil {
+		input.Console.Println(split)
+		input.Console.Println("Remove Daily:",
+			input.Console.ShortDailyPath(dailyFile),
+			" Failed:", err)
+	} else {
+		input.Console.Println(split)
+		input.Console.Println("Remove Daily:",
+			input.Console.ShortDailyPath(dailyFile),
+			" Success")
+	}
+
+	// 直接删除
+	if len(input.Args) >= 1 {
+		dailyFile := input.Console.FullDailyPath(input.Args[1])
+		if err := os.Remove(dailyFile); err != nil {
+			input.Console.Println(split)
+			input.Console.Println("Remove Daily:",
+				input.Console.ShortDailyPath(dailyFile),
+				" Failed:", err)
+		} else {
+			input.Console.Println(split)
+			input.Console.Println("Remove Daily:",
+				input.Console.ShortDailyPath(dailyFile),
+				" Success")
+		}
+	}
+}
+
+func rd_ls(input *daily.InputContext, dogress bool) (notes []*Note) {
 	// 当前路径
 	current := input.Console.Cmd_pwd()
 
@@ -219,11 +267,13 @@ func Exec_RdDaily_Ls(input *daily.InputContext) {
 	set.Parse(vsets)
 
 	progress := goterminal.New(os.Stdout)
-	notes := []*Note{}
+	notes = []*Note{}
 	filepath.Walk(current, func(path string, info os.FileInfo, err error) error {
-		progress.Clear()
+		if dogress {
+			progress.Clear()
+			fmt.Fprintf(progress, "扫描到(%d) 个符合要求的日志 ...\n", len(notes))
+		}
 
-		fmt.Fprintf(progress, "扫描到(%d) 个符合要求的日志 ...\n", len(notes))
 		if err == nil {
 			note, _ := MakeNote(input.Console, path, info)
 			for {
@@ -250,20 +300,18 @@ func Exec_RdDaily_Ls(input *daily.InputContext) {
 				break
 			}
 		}
-		progress.Print()
-		if len(notes) < 10 {
+		if dogress {
+			progress.Print()
+		}
+		if dogress && len(notes) < 10 {
 			time.Sleep(time.Millisecond * 20)
 		}
 		return nil
 	})
-
-	for _, v := range notes {
-		v.Print()
-	}
+	return
 }
 
-// 操作 - 编辑
-func Exec_RdDaily_Edit(input *daily.InputContext) {
+func rd_edit(input *daily.InputContext) {
 	control := &RdFlag_Ls{
 		Ts:       daily.DefaultTime(),
 		Count:    -1,
@@ -331,23 +379,8 @@ func Exec_RdDaily_Edit(input *daily.InputContext) {
 	}
 }
 
-// 操作 - 删除
-func Exec_RdDaily_Del(input *daily.InputContext) {
-	split := strings.Repeat("#", daily.LineLen)
-
-	// 直接删除
-	if len(input.Args) >= 1 {
-		dailyFile := input.Console.FullDailyPath(input.Args[1])
-		if err := os.Remove(dailyFile); err != nil {
-			input.Console.Println(split)
-			input.Console.Println("Remove Daily:",
-				input.Console.ShortDailyPath(dailyFile),
-				" Failed:", err)
-		} else {
-			input.Console.Println(split)
-			input.Console.Println("Remove Daily:",
-				input.Console.ShortDailyPath(dailyFile),
-				" Success")
-		}
-	}
+func rd_del(input *daily.InputContext) (dailyFile string, err error) {
+	dailyFile = input.Console.FullDailyPath(input.Args[1])
+	err = os.Remove(dailyFile)
+	return
 }

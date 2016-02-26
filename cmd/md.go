@@ -97,6 +97,18 @@ func (line *MdFlatLine) Print() {
 	fmt.Printf("%02d:%v\n", line.Idx, *line.MdLine)
 }
 
+// 打印
+func (line *MdFlatLine) PrintWithState() {
+	if line.MdLine == nil {
+		outs := string(depends.MdOutput([]byte(line.Line)))
+		if len(outs) > 0 && outs[0] == '\n' {
+			outs = outs[1:]
+		}
+		line.MdLine = &outs
+	}
+	fmt.Printf("%02d:%-18s \t\t(%v)\n", line.Idx, *line.MdLine, daily.GiveMeJson(line.State))
+}
+
 // 列表等级
 // 从 1开始
 func (line *MdFlatLine) Depth() (depth int) {
@@ -201,75 +213,111 @@ func (daily *MdFlatDaily) ReadFrom(name string) (err error) {
 	return
 }
 
+// depth [1, ]
+func cal_parent(
+	depth int,
+	visits []int,
+	lines []*MdFlatLine) (
+	parent *MdFlatLine) {
+	for n := depth - 1; n > 0; n-- {
+		m := visits[n]
+		if m != -1 {
+			parent = lines[m]
+			break
+		}
+	}
+	return
+}
+
+// depth [d, len(pp)]
+func cal_end_parent(
+	depth int,
+	parent *MdFlatLine,
+	parents []*MdFlatLine,
+	idx int) {
+	parents[depth] = parent
+	for n := depth + 1; n < len(parents); n++ {
+		p := parents[n]
+		if p == nil {
+			break
+		}
+		parents[n] = nil
+		p.State.MaxChildLine = idx
+	}
+}
+
+// 填写访问记录
+func cal_assign_visit(
+	depth int,
+	visits []int,
+	idx int) {
+	visits[depth] = idx
+	for n := depth + 1; n < len(visits); n++ {
+		if visits[n] == -1 {
+			break
+		}
+		visits[n] = -1
+	}
+}
+
 // 解析行的状态
 func (md *MdFlatDaily) ParseLineState() {
-	visit := make([]int, 32)  // 父级路径
-	stats := make([]int, 32)  // 级别状态
-	childs := make([]int, 32) // 跟踪父亲的孩子的状态
-	todos := make([]int, 32)  // 跟踪父亲的孩子的状态
-	dh := 0
-	lh := 0 // 记住上次的深度
+	maxline := len(md.Lines) - 1
+	if maxline < 0 {
+		return
+	}
+	visits := make([]int, 8) // 访问记录
+	parents := make([]*MdFlatLine, 8)
+	sliceAssign(visits, -1)
+	validIdx := 0 // 最后一个有效行
+
 	for _, line := range md.Lines {
 		line.State = &MdLineState{}
 		line.State.Depth = line.Depth()
-		dh = line.State.Depth
-
-		// 统计父亲的孩子个数和todo
-		/*
-			line.Print()
-			fmt.Println("Line:", line.Idx, "depth:", dh, "Last depth:", lh)
-		*/
-		if lh > dh || (line.Idx == (len(md.Lines)-1) && lh > 0) {
-			parent := md.Lines[visit[lh-1]]
-			parent.State.Child = childs[lh-1]
-			parent.State.Todo = todos[lh-1]
-			parent.State.MaxChildLine = line.Idx
-
-			childs[lh-1] = 0
-			todos[lh-1] = 0
-
-			/*
-				parent.Print()
-				fmt.Println(daily.GiveMeJson(parent.State))
-			*/
-		}
-		lh = dh
-
-		if dh == 0 {
+		if line.State.Depth == 0 {
 			continue
 		}
-
-		stats[dh] = stats[dh-1]
-		childs[dh-1]++
-
 		// done
 		if line.Has(MarkDone) {
-			stats[dh] = stats[dh] | RStateDone
+			line.State.State = line.State.State | RStateDone
 		}
 		// skip
 		if line.Has(MarkSkip) {
-			stats[dh] = stats[dh] | RStateSkip
+			line.State.State = line.State.State | RStateSkip
 		}
 		// remmind
 		if line.Has(MarkRemind) {
-			stats[dh] = stats[dh] | RStateRemind
+			line.State.State = line.State.State | RStateRemind
 		}
-		// 需要todo 的个数
-		if stats[dh]&RStateDone == 0 && stats[dh]&RStateSkip == 0 {
-			todos[dh-1]++
+
+		depth := line.State.Depth
+		// 天上访问记录
+		cal_assign_visit(depth, visits, line.Idx)
+		// 路径, TODO 跳过中间的-1
+		line.State.Path = append([]int{},
+			visits[1:line.State.Depth+1]...)
+		// 查找父亲
+		parent := cal_parent(depth, visits, md.Lines)
+
+		// 结束那些已经计算好的父节点
+		cal_end_parent(depth, parent, parents, validIdx)
+
+		// 更新父亲的状态，并把父状态带给孩子
+		if parent != nil {
+			line.State.State = line.State.State |
+				parent.State.State
+
+			parent.State.Child++
+			if line.State.State&RStateDone == 0 &&
+				line.State.State&RStateSkip == 0 {
+				parent.State.Todo++
+			}
 		}
-		line.State.State = stats[dh]
-
-		visit[dh] = line.Idx
-		line.State.Path = append([]int{}, visit[1:line.State.Depth+1]...)
-
-		/*
-			fmt.Println("V:", visit[:5])
-			fmt.Println("S:", stats[:5])
-			fmt.Println("C:", childs[:5])
-			fmt.Println("T:", todos[:5])
-		*/
+		validIdx = line.Idx
 	}
+
+	// 最后一行的结束计算 parent
+	cal_end_parent(1, nil, parents, validIdx)
 }
 
 // 把md 反写到文件
@@ -299,6 +347,14 @@ func (daily *MdFlatDaily) WriteTo(name string) (err error) {
 func (daily *MdFlatDaily) Print() {
 	for _, line := range daily.Lines {
 		line.Print()
+	}
+	fmt.Print("\n")
+}
+
+// 打印
+func (daily *MdFlatDaily) PrintWithState() {
+	for _, line := range daily.Lines {
+		line.PrintWithState()
 	}
 	fmt.Print("\n")
 }
@@ -587,4 +643,11 @@ func mdDaily(console *daily.ConsoleDaily, args []string) (
 	}
 
 	return
+}
+
+// 把 slice 里面的所有值都赋值为value
+func sliceAssign(a []int, value int) {
+	for i, _ := range a {
+		a[i] = value
+	}
 }
