@@ -14,9 +14,10 @@ var (
 
 	LineLen = 60
 
-	EndMark         = "[END OF EDIT]"
-	TimeLayout      = "2006-01-02 15:04:05"
-	TimeDailyLayout = "2006-01-02"
+	EndMark            = "[END OF EDIT]"
+	TimeLayout         = "2006-01-02 15:04"
+	TimeLayout_Seconds = "2006-01-02 15:04:05"
+	TimeDailyLayout    = "2006-01-02"
 )
 
 // 命令行常量

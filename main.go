@@ -37,6 +37,7 @@ func main() {
 	console.AddCommand(&cmd.Code{})
 
 	console.AddCommand(&inner.Xcd{})
+	console.AddCommand(&inner.Help{})
 
 	console.Enter(strings.Join(os.Args[1:], " "))
 }

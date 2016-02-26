@@ -302,6 +302,7 @@ type ReminderParam struct {
 const (
 	RStateDone = 1 << iota
 	RStateSkip
+	RStateRemind
 )
 
 // 一个提醒事项
@@ -335,6 +336,9 @@ func (r *Reminder) Time() time.Time {
 		if t, e := time.ParseInLocation(daily.TimeLayout, *r.Param.Ts, time.Local); e == nil {
 			r.Ts = append(r.Ts, t)
 			return t
+		} else if t, e := time.ParseInLocation(daily.TimeLayout_Seconds, *r.Param.Ts, time.Local); e == nil {
+			r.Ts = append(r.Ts, t)
+			return t
 		} else {
 			fmt.Println("时间格式错误", *r.Param.Ts)
 			r.Param.Ts = nil
@@ -357,6 +361,11 @@ func (rd *ReminderDaily) ReadFrom(md *MdFlatDaily, skip bool) (err error) {
 	stats := make([]int, 32) // 级别状态
 	dh := 0
 	for _, line := range md.Lines {
+		/*
+			if line.State == nil || line.State.Depth == 0 {
+				continue
+			}
+		*/
 		if dh = line.Depth(); dh == 0 {
 			continue
 		}
@@ -428,10 +437,13 @@ type Remind struct {
 
 	// 控制台
 	Console *daily.ConsoleDaily
+
+	HaveOpen bool
 }
 
 // 初始化
 func (con *Remind) Open() {
+	con.HaveOpen = true
 	con.Sequence = &ReminderSequence{}
 	con.Sequence.Open()
 	con.Sequence.Start()
@@ -480,7 +492,6 @@ func (con *Remind) Dettach(rd *ReminderDaily) {
 }
 
 func (con *Remind) Name() string {
-	con.Open()
 	return "remind"
 }
 
@@ -490,6 +501,9 @@ func (con *Remind) Help() string {
 }
 
 func (con *Remind) Deal(input *daily.InputContext) {
+	if !con.HaveOpen {
+		con.Open()
+	}
 	if len(input.Args) < 2 {
 		input.Console.Println(con.Help())
 		return

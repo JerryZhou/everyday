@@ -65,10 +65,24 @@ func (con *Md) AutoCompleteCallback(console *daily.ConsoleDaily, line []byte, po
 // me md mark daily group sub xxx
 
 //***********************************
+// 行的状态
+type MdLineState struct {
+	Depth int
+	State int
+	Path  []int
+
+	Child        int // 孩子总数
+	Todo         int // 需要做的个数
+	MaxChildLine int // 最后一个孩子的行号
+}
+
+// 具体行
 type MdFlatLine struct {
 	Line   string
 	Idx    int
 	MdLine *string
+
+	State *MdLineState
 }
 
 // 打印
@@ -172,16 +186,90 @@ func (daily *MdFlatDaily) ReadFrom(name string) (err error) {
 				err = nil
 				if len(mdline.Line) > 0 {
 					daily.Lines = append(daily.Lines, mdline)
+				} else {
+					break
 				}
-				break
 			} else {
 				break
 			}
 		}
 
+		// 解析行的状态
+		daily.ParseLineState()
 		break
 	}
 	return
+}
+
+// 解析行的状态
+func (md *MdFlatDaily) ParseLineState() {
+	visit := make([]int, 32)  // 父级路径
+	stats := make([]int, 32)  // 级别状态
+	childs := make([]int, 32) // 跟踪父亲的孩子的状态
+	todos := make([]int, 32)  // 跟踪父亲的孩子的状态
+	dh := 0
+	lh := 0 // 记住上次的深度
+	for _, line := range md.Lines {
+		line.State = &MdLineState{}
+		line.State.Depth = line.Depth()
+		dh = line.State.Depth
+
+		// 统计父亲的孩子个数和todo
+		/*
+			line.Print()
+			fmt.Println("Line:", line.Idx, "depth:", dh, "Last depth:", lh)
+		*/
+		if lh > dh || (line.Idx == (len(md.Lines)-1) && lh > 0) {
+			parent := md.Lines[visit[lh-1]]
+			parent.State.Child = childs[lh-1]
+			parent.State.Todo = todos[lh-1]
+			parent.State.MaxChildLine = line.Idx
+
+			childs[lh-1] = 0
+			todos[lh-1] = 0
+
+			/*
+				parent.Print()
+				fmt.Println(daily.GiveMeJson(parent.State))
+			*/
+		}
+		lh = dh
+
+		if dh == 0 {
+			continue
+		}
+
+		stats[dh] = stats[dh-1]
+		childs[dh-1]++
+
+		// done
+		if line.Has(MarkDone) {
+			stats[dh] = stats[dh] | RStateDone
+		}
+		// skip
+		if line.Has(MarkSkip) {
+			stats[dh] = stats[dh] | RStateSkip
+		}
+		// remmind
+		if line.Has(MarkRemind) {
+			stats[dh] = stats[dh] | RStateRemind
+		}
+		// 需要todo 的个数
+		if stats[dh]&RStateDone == 0 && stats[dh]&RStateSkip == 0 {
+			todos[dh-1]++
+		}
+		line.State.State = stats[dh]
+
+		visit[dh] = line.Idx
+		line.State.Path = append([]int{}, visit[1:line.State.Depth+1]...)
+
+		/*
+			fmt.Println("V:", visit[:5])
+			fmt.Println("S:", stats[:5])
+			fmt.Println("C:", childs[:5])
+			fmt.Println("T:", todos[:5])
+		*/
+	}
 }
 
 // 把md 反写到文件
@@ -217,29 +305,18 @@ func (daily *MdFlatDaily) Print() {
 
 // 打印
 func (daily *MdFlatDaily) PrintTODO() {
-	var (
-		part int = 0
-	)
-	for _, line := range daily.Lines {
-		if strings.HasPrefix(line.Line, "## ") {
-			if line.Has(MarkSkip) {
-				part = 1
-				continue
-			} else {
-				part = 0
-			}
-		}
-		if line.Has(MarkDone) {
+	for i := 0; i < len(daily.Lines); {
+		line := daily.Lines[i]
+		if line.State.Child > 0 && line.State.Todo == 0 {
+			i = line.State.MaxChildLine + 1
 			continue
 		}
-		if line.Has(MarkSkip) {
-			continue
-		}
-		if part == 0 {
+		if line.State.State&RStateSkip == 0 &&
+			line.State.State&RStateDone == 0 {
 			line.Print()
 		}
+		i++
 	}
-	fmt.Print("\n")
 }
 
 // 执行Md 文件的相关操作

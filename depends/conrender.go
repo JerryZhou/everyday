@@ -46,9 +46,14 @@ func (options *Console) BlockCode(out *bytes.Buffer, text []byte, lang string) {
 
 	out.WriteString("\n    ")
 	out.WriteString(ansi.ColorCode("015"))
-	out.WriteString(reg.ReplaceAllString(s, "\n    "))
+	// {{jerryzhou
+	//out.WriteString(reg.ReplaceAllString(s, "\n    "))
+	//out.WriteString(ansi.ColorCode("reset"))
+	//out.WriteString("\n")
+	// =========>
+	out.WriteString(reg.ReplaceAllString(s, "    "))
 	out.WriteString(ansi.ColorCode("reset"))
-	out.WriteString("\n")
+	// }}
 }
 
 func (options *Console) BlockQuote(out *bytes.Buffer, text []byte) {
@@ -67,7 +72,7 @@ func (options *Console) BlockHtml(out *bytes.Buffer, text []byte) {
 }
 
 func (options *Console) Header(out *bytes.Buffer, text func() bool, level int, id string) {
-	out.WriteString("\n")
+	//out.WriteString("\n")
 	out.WriteString(headerStyles[level-1])
 
 	marker := out.Len()
@@ -150,7 +155,7 @@ func (options *Console) Footnotes(out *bytes.Buffer, text func() bool)          
 func (options *Console) FootnoteItem(out *bytes.Buffer, name, text []byte, flags int)          {}
 
 func (options *Console) TitleBlock(out *bytes.Buffer, text []byte) {
-	out.WriteString("\n")
+	//out.WriteString("\n")
 	out.WriteString(headerStyles[0])
 	out.Write(text)
 	out.WriteString(ansi.ColorCode("reset"))
