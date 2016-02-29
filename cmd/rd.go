@@ -195,8 +195,8 @@ type RdFlag_Ls struct {
 // 操作 - 枚举
 func Exec_RdDaily_Ls(input *daily.InputContext) {
 	notes := rd_ls(input, true)
-	for _, v := range notes {
-		v.Print()
+	for i := len(notes) - 1; i >= 0; i-- {
+		notes[i].Print()
 	}
 }
 

@@ -24,6 +24,31 @@ var emphasisStyles = [...]string{
 	ansi.ColorCode("cyan+bhi"),
 }
 
+var doneStyles = [...]string{
+	ansi.ColorCode("green+bhi"),
+	ansi.ColorCode("green+bhu"),
+	ansi.ColorCode("green+bh"),
+}
+
+var skipStyles = [...]string{
+	ansi.ColorCode("magenta+bh"),
+	ansi.ColorCode("magenta+bhu"),
+	ansi.ColorCode("magenta+bhi"),
+}
+
+var remindStyles = [...]string{
+	ansi.ColorCode("blue+bh"),
+	ansi.ColorCode("blue+bhu"),
+	ansi.ColorCode("blue+bhi"),
+}
+
+var stateStyles = [...][3]string{
+	emphasisStyles,
+	doneStyles,
+	skipStyles,
+	remindStyles,
+}
+
 var linkStyle = ansi.ColorCode("015+u")
 
 const (
@@ -38,6 +63,17 @@ type list struct {
 
 type Console struct {
 	lists []*list
+}
+
+func (options *Console) emphasisIndex(s string) int {
+	if strings.Contains(s, "[DONE]") {
+		return 1
+	} else if strings.Contains(s, "[SKIP]") {
+		return 2
+	} else if strings.Contains(s, "[REMIND]") {
+		return 3
+	}
+	return 0
 }
 
 func (options *Console) BlockCode(out *bytes.Buffer, text []byte, lang string) {
@@ -177,13 +213,16 @@ func (options *Console) CodeSpan(out *bytes.Buffer, text []byte) {
 }
 
 func (options *Console) DoubleEmphasis(out *bytes.Buffer, text []byte) {
-	out.WriteString(emphasisStyles[1])
+	s := string(text)
+	out.WriteString(stateStyles[options.emphasisIndex(s)][1])
 	out.Write(text)
 	out.WriteString(ansi.ColorCode("reset"))
 }
 
 func (options *Console) Emphasis(out *bytes.Buffer, text []byte) {
-	out.WriteString(emphasisStyles[0])
+	s := string(text)
+
+	out.WriteString(stateStyles[options.emphasisIndex(s)][0])
 	out.Write(text)
 	out.WriteString(ansi.ColorCode("reset"))
 }
@@ -212,7 +251,8 @@ func (options *Console) RawHtmlTag(out *bytes.Buffer, tag []byte) {
 }
 
 func (options *Console) TripleEmphasis(out *bytes.Buffer, text []byte) {
-	out.WriteString(emphasisStyles[2])
+	s := string(text)
+	out.WriteString(stateStyles[options.emphasisIndex(s)][2])
 	out.Write(text)
 	out.WriteString(ansi.ColorCode("reset"))
 }

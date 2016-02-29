@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	color "github.com/fatih/color"
 	daily "jerry.com/everyday/daily"
 	"os"
 	"strings"
@@ -36,7 +37,12 @@ func (con *Today) Deal(input *daily.InputContext) {
 			}
 		}
 	}
+	split := color.MagentaString(strings.Repeat("#", daily.LineLen))
 	for _, md := range mds {
+		input.Console.Println(split)
+		input.Console.Println(color.MagentaString(input.Console.SprintfCenter(
+			input.Console.ShortDailyPath(md.File))))
+
 		md.PrintTODO()
 	}
 }
