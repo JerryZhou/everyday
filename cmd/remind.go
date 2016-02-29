@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"sync"
 	//"errors"
 	heap "container/heap"
 	gosxnotifier "github.com/deckarep/gosx-notifier"
@@ -24,8 +26,9 @@ const (
 
 // 操作参数
 type SeqOp struct {
-	Op int
-	R  *Reminder
+	Op   int
+	R    *Reminder
+	Wait *sync.WaitGroup
 }
 
 // Heap
@@ -140,14 +143,19 @@ func (rds *RdArray) Less(i, j int) bool { return rds.Rds[i].BoltTs() < rds.Rds[j
 func (rds *RdArray) Swap(i, j int)      { rds.Rds[i], rds.Rds[j] = rds.Rds[j], rds.Rds[i] }
 
 // 按照实际顺序列出来
-func (seq *ReminderSequence) lsop() {
+func (seq *ReminderSequence) lsop(wait *sync.WaitGroup) {
 	rds := &RdArray{}
 	rds.Rds = append([]*Reminder{}, seq.Sequence...) // copy
 	go func() {
+		if rds.Len() == 0 {
+			fmt.Println(strings.Repeat("#", 60))
+			fmt.Println("当前没有任何提醒")
+		}
 		sort.Sort(rds)
 		for _, r := range rds.Rds {
 			r.Print()
 		}
+		wait.Done()
 	}()
 }
 
@@ -169,15 +177,19 @@ func (seq *ReminderSequence) Del(r *Reminder) {
 	seq.Ops <- op
 }
 
-// 穷举
+// 穷举 会等着结果回来
 func (seq *ReminderSequence) Ls() {
-	op := &SeqOp{Op: SeqOpCodeLs}
+	op := &SeqOp{Op: SeqOpCodeLs, Wait: &sync.WaitGroup{}}
+	op.Wait.Add(1)
+
 	seq.Ops <- op
+	// 穷举完成
+	op.Wait.Wait()
 }
 
 // 时间到了
 func (seq *ReminderSequence) when_reach(r *Reminder) {
-	seq.Notes <- r
+	r.Way.Reach(seq, r)
 }
 
 // 决定谁是下一个
@@ -216,7 +228,7 @@ func (seq *ReminderSequence) when_op(op *SeqOp) {
 		seq.exitop()
 	case SeqOpCodeLs:
 		success = true
-		seq.lsop()
+		seq.lsop(op.Wait)
 	default:
 	}
 
@@ -363,6 +375,19 @@ const (
 	RStateRemind
 )
 
+// 提醒方式
+type ReminderWay interface {
+	Reach(seq *ReminderSequence, r *Reminder)
+}
+
+// 用 osx 的方式进行提醒
+type ReminderNoteWay struct {
+}
+
+func (note *ReminderNoteWay) Reach(seq *ReminderSequence, r *Reminder) {
+	seq.Notes <- r
+}
+
 // 一个提醒事项
 type Reminder struct {
 	Key   *ReminderKey // 关键字
@@ -378,6 +403,10 @@ type Reminder struct {
 	// 由 sequence 进行维护的数据，外部不能修改
 	Seat int               // 在堆栈的位置
 	Seq  *ReminderSequence // 提醒序列
+
+	// TODO
+	// 提醒方式：响铃; 执行一段shell; 把自己加入到下一次提醒
+	Way ReminderWay
 }
 
 // 下一个提醒时间点
@@ -407,7 +436,6 @@ func (r *Reminder) Time() time.Time {
 
 // 打印自己
 func (r *Reminder) Print() {
-	fmt.Println("")
 	fmt.Println(strings.Repeat("#", 60))
 	fmt.Println("Key:", r.Key.String())
 	fmt.Print("Content:")
@@ -428,7 +456,7 @@ func (rd *ReminderDaily) MarkRemind(line *MdFlatLine) (r *Reminder) {
 	r = &Reminder{}
 	r.Key = &ReminderKey{}
 	r.Key.Category = rd.File
-	r.Key.Name = strings.Join(sliceItoa(line.State.Path), ",")
+	r.Key.Name = strings.Join(sliceItoa(line.State.Path), string(os.PathSeparator))
 	r.Line = line
 	r.Daily = rd
 	r.State = line.State.State
@@ -444,6 +472,7 @@ func (rd *ReminderDaily) MarkRemind(line *MdFlatLine) (r *Reminder) {
 		}
 		r.Ts = make([]time.Time, 0)
 	}
+	r.Way = &ReminderNoteWay{}
 	return
 }
 
@@ -563,6 +592,12 @@ func (con *Remind) Name() string {
 
 func (con *Remind) Help() string {
 	return "usage: remind\n" +
+		"remind ls \n" +
+		"remind add key content ts\n" +
+		"remind del key \n" +
+		"remind see /2016/02/jerry/14-Weekday.md \n" +
+		"remind try 10 \n" +
+		"remind collect [-c category] [-t 2016-02-26] [-n 7]\n" +
 		"clear current screen"
 }
 
@@ -647,6 +682,7 @@ func (con *Remind) exec_remind_add(input *daily.InputContext) {
 	r.Daily = nil
 	r.State = 0
 	r.Ts = make([]time.Time, 0)
+	r.Way = &ReminderNoteWay{}
 
 	con.Add(r)
 }
@@ -687,6 +723,7 @@ func (con *Remind) exec_remind_try(input *daily.InputContext) {
 	r.Daily = nil
 	r.State = 0
 	r.Ts = make([]time.Time, 0)
+	r.Way = &ReminderNoteWay{}
 
 	con.Add(r)
 }

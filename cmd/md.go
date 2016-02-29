@@ -106,8 +106,12 @@ func (line *MdFlatLine) PrintWithState() {
 		}
 		line.MdLine = &outs
 	}
-	fmt.Printf("%02d:%-18s \t\t(%v)\n", line.Idx, *line.MdLine, daily.GiveMeJson(line.State))
+	fmt.Printf("%02d:%-.18s \t\t(%v)\n", line.Idx, *line.MdLine, daily.GiveMeJson(line.State))
 }
+
+var (
+	DepthWidth = 4
+)
 
 // 列表等级
 // 从 1开始
@@ -117,10 +121,13 @@ func (line *MdFlatLine) Depth() (depth int) {
 		depth = 0
 		return
 	}
-	if strings.HasPrefix(line.Line, "## ") {
-		depth = 4
+	if strings.HasPrefix(line.Line, "# ") ||
+		(strings.HasPrefix(line.Line, "---") && line.Idx == 0) {
+		depth = 1 * DepthWidth
+	} else if strings.HasPrefix(line.Line, "## ") {
+		depth = 2 * DepthWidth
 	} else if strings.HasPrefix(line.Line, "*") {
-		depth = 8
+		depth = 3 * DepthWidth
 	} else {
 		for _, v := range line.Line {
 			if v == rune('\t') {
@@ -132,11 +139,11 @@ func (line *MdFlatLine) Depth() (depth int) {
 			}
 		}
 		if depth > 0 {
-			depth = depth + 8
+			depth = depth + 3*DepthWidth
 		}
 	}
 
-	depth = (depth / 4)
+	depth = (depth / DepthWidth)
 	return
 }
 
@@ -165,6 +172,8 @@ func (line *MdFlatLine) Unmark(mark string) {
 type MdFlatDaily struct {
 	Lines []*MdFlatLine
 	File  string
+
+	MaxValidIdx int // 最大的有效内容行
 }
 
 // 从文件里面一行一行读取
@@ -234,6 +243,7 @@ func cal_end_parent(
 	depth int,
 	parent *MdFlatLine,
 	parents []*MdFlatLine,
+	lines []*MdFlatLine,
 	idx int) {
 	parents[depth] = parent
 	for n := depth + 1; n < len(parents); n++ {
@@ -243,6 +253,32 @@ func cal_end_parent(
 		}
 		parents[n] = nil
 		p.State.MaxChildLine = idx
+
+		// 追溯父亲的完成状态
+		cal_backtrace_parent(p, lines)
+	}
+}
+
+// 追溯父亲的完成状态
+func cal_backtrace_parent(p *MdFlatLine, lines []*MdFlatLine) {
+	if p.State.Child > 0 &&
+		p.State.Todo == 0 &&
+		(p.State.State&RStateDone == 0) {
+		// 把节点从undone 变成 done
+		p.State.State = p.State.State | RStateDone
+		// 没有done 也没有skip 则把父亲上面的todo -1
+		if p.State.State&RStateSkip == 0 {
+			// 父节点的todo 要减1
+			// path = [..., parent, self]
+			for i := len(p.State.Path) - 2; i >= 0; i-- {
+				parentidx := p.State.Path[i]
+				if parentidx == -1 {
+					continue
+				}
+				parent := lines[parentidx]
+				parent.State.Todo--
+			}
+		}
 	}
 }
 
@@ -299,9 +335,6 @@ func (md *MdFlatDaily) ParseLineState() {
 		// 查找父亲
 		parent := cal_parent(depth, visits, md.Lines)
 
-		// 结束那些已经计算好的父节点
-		cal_end_parent(depth, parent, parents, validIdx)
-
 		// 更新父亲的状态，并把父状态带给孩子
 		if parent != nil {
 			line.State.State = line.State.State |
@@ -313,11 +346,17 @@ func (md *MdFlatDaily) ParseLineState() {
 				parent.State.Todo++
 			}
 		}
+		// 结束那些已经计算好的父节点
+		cal_end_parent(depth, parent, parents, md.Lines, validIdx)
+
 		validIdx = line.Idx
 	}
 
 	// 最后一行的结束计算 parent
-	cal_end_parent(1, nil, parents, validIdx)
+	cal_end_parent(1, nil, parents, md.Lines, validIdx)
+
+	// 最大的有效行
+	md.MaxValidIdx = validIdx
 }
 
 // 把md 反写到文件
@@ -361,7 +400,7 @@ func (daily *MdFlatDaily) PrintWithState() {
 
 // 打印
 func (daily *MdFlatDaily) PrintTODO() {
-	for i := 0; i < len(daily.Lines); {
+	for i := 0; i < len(daily.Lines) && i <= daily.MaxValidIdx; {
 		line := daily.Lines[i]
 		if line.State.Child > 0 && line.State.Todo == 0 {
 			i = line.State.MaxChildLine + 1
@@ -373,6 +412,26 @@ func (daily *MdFlatDaily) PrintTODO() {
 		}
 		i++
 	}
+}
+
+// 是否有未做的事情
+func (daily *MdFlatDaily) HasTodo() (has bool) {
+	has = false
+	for i := 0; i < len(daily.Lines) && i <= daily.MaxValidIdx; {
+		line := daily.Lines[i]
+		if line.State.Child > 0 && line.State.Todo == 0 {
+			i = line.State.MaxChildLine + 1
+			continue
+		}
+		if line.State.State&RStateSkip == 0 &&
+			line.State.State&RStateDone == 0 {
+			has = true
+			break
+		}
+		i++
+
+	}
+	return
 }
 
 // 执行Md 文件的相关操作
@@ -461,11 +520,13 @@ func Exec_MdDaily_todo(input *daily.InputContext) {
 	split := color.MagentaString(strings.Repeat("#", daily.LineLen))
 	// 输出日志
 	for _, daily := range flats {
-		input.Console.Println(split)
-		input.Console.Println(color.MagentaString(input.Console.SprintfCenter(
-			input.Console.ShortDailyPath(daily.File))))
+		if daily.HasTodo() {
+			input.Console.Println(split)
+			input.Console.Println(color.MagentaString(input.Console.SprintfCenter(
+				input.Console.ShortDailyPath(daily.File))))
 
-		daily.PrintTODO()
+			daily.PrintTODO()
+		}
 	}
 }
 

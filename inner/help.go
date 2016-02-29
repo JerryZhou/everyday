@@ -13,8 +13,8 @@ func (con *Help) Name() string {
 }
 
 func (con *Help) Help() string {
-	return "usage: xcd mode\n" +
-		"change current mode dir"
+	return "usage: help\n" +
+		"show all register command"
 }
 
 func (con *Help) Deal(input *daily.InputContext) {

@@ -355,6 +355,8 @@ func rd_edit(input *daily.InputContext) {
 		_, _, dy := input.Console.DailyPath(control.Category, time.Now())
 		fileInfo, err := os.Stat(dy)
 		if err != nil && os.IsNotExist(err) {
+			// make sure directory exits
+			os.MkdirAll(path.Dir(dy), 0777)
 			// touch file
 			f, e := os.OpenFile(dy, os.O_CREATE, 0666)
 			if e != nil {

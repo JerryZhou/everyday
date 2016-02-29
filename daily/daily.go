@@ -144,7 +144,7 @@ func (console *ConsoleDaily) SprintfCenter(format string, a ...interface{}) stri
 	spaceright := strings.Repeat(console.V.Space,
 		sspace-sspace/2)
 
-	s = fmt.Sprintf("%v%v%v%v%v\n",
+	s = fmt.Sprintf("%v%v%v%v%v",
 		console.V.Start,
 		spaceleft, s, spaceright,
 		console.V.End)
@@ -316,7 +316,7 @@ func (console *ConsoleDaily) Start() {
 	console.Println(console.V.Split)
 
 	// 可以处理 历史记录，可以处理退格等
-	console.TerminalLoop()
+	console.BufIOLoop()
 }
 
 // 获取日志详细的路径

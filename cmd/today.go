@@ -24,9 +24,8 @@ func (con *Today) Deal(input *daily.InputContext) {
 	xnow := time.Now()
 	input.Console.Println(input.Console.V.Split)
 	input.Console.PrintCenterln(xnow.Format(daily.TimeLayout))
-	input.Console.Println(listCategory(input.Console))
-	categorys := listCategory(input.Console)
 
+	categorys := listCategory(input.Console)
 	mds := []*MdFlatDaily{}
 	for _, v := range categorys {
 		_, _, dy := input.Console.DailyPath(v, xnow)
