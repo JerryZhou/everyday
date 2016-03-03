@@ -418,6 +418,13 @@ func (daily *MdFlatDaily) PrintTODO() {
 	}
 }
 
+// 打印
+func (flat *MdFlatDaily) PrintHead(console *daily.ConsoleDaily) {
+	console.Println(console.V.Split)
+	console.PrintCenterln(console.ShortDailyPath(flat.File))
+	console.Println("")
+}
+
 // 是否有未做的事情
 func (daily *MdFlatDaily) HasTodo() (has bool) {
 	has = false
@@ -441,7 +448,9 @@ func (daily *MdFlatDaily) HasTodo() (has bool) {
 // 执行Md 文件的相关操作
 func Exec_MdDaily(input *daily.InputContext) {
 	cmd := input.Args[0]
-	if cmd == "add" {
+	if cmd == "ls" {
+		Exec_MdDaily_ls(input)
+	} else if cmd == "add" {
 		Exec_MdDaily_add(input)
 	} else if cmd == "del" {
 		Exec_MdDaily_del(input)
@@ -470,57 +479,16 @@ func Exec_MdDaily(input *daily.InputContext) {
 // 控制参数
 type MdFlag_todo struct {
 	Ts       string
+	Count    int
 	Range    int
 	Category string
 }
 
 // 列出所有未完成项目
 func Exec_MdDaily_todo(input *daily.InputContext) {
-	control := &MdFlag_todo{
-		Ts:       daily.DefaultTime(),
-		Range:    7,
-		Category: daily.DefaultCategory(),
-	}
+	// 扫描出所有日志
+	flats := md_ls(input)
 
-	// [cmd args flags]
-	vargs, vsets := daily.ParseFlagSet(input.Args)
-	if len(vargs) > 1 {
-		control.Category = vargs[1]
-		if len(vargs) > 2 {
-			control.Ts = vargs[2]
-		}
-	}
-	set := flag.NewFlagSet("todo", flag.ContinueOnError)
-	set.StringVar(&control.Ts, "t", control.Ts, "指定日期")
-	set.IntVar(&control.Range, "n", control.Range, "指定个数")
-	set.StringVar(&control.Category, "c", control.Category, "指定类别")
-
-	set.Parse(vsets)
-
-	var (
-		flats []*MdFlatDaily
-		sign  int
-		xnow  time.Time = time.Now()
-	)
-
-	if xnow0, err0 := time.Parse(daily.TimeDailyLayout, control.Ts); err0 == nil {
-		xnow = xnow0
-	}
-	if control.Range > 0 {
-		sign = 1
-	} else {
-		sign = -1
-	}
-	// 读取日志
-	for count := 0; sign*count != control.Range; count++ {
-		xnow := xnow.AddDate(0, 0, -1*sign*count)
-		_, _, dailyFile := input.Console.DailyPath(control.Category, xnow)
-
-		flatDaily := &MdFlatDaily{}
-		if err := flatDaily.ReadFrom(dailyFile); err == nil {
-			flats = append(flats, flatDaily)
-		}
-	}
 	split := color.MagentaString(strings.Repeat("#", daily.LineLen))
 	// 输出日志
 	for _, daily := range flats {
@@ -574,6 +542,14 @@ func Exec_MdDaily_unmark(input *daily.InputContext) {
 	flatDaily.Lines[idx].Print()
 	if err := flatDaily.WriteTo(flatDaily.File); err != nil {
 		fmt.Println("Write Md Err:", err)
+	}
+}
+
+// 扫描本地的类别日志
+func Exec_MdDaily_ls(input *daily.InputContext) {
+	flats := md_ls(input)
+	for _, v := range flats {
+		v.PrintHead(input.Console)
 	}
 }
 
@@ -715,4 +691,59 @@ func sliceAssign(a []int, value int) {
 	for i, _ := range a {
 		a[i] = value
 	}
+}
+
+// 列出所有日志
+func md_ls(input *daily.InputContext) (flats []*MdFlatDaily) {
+	control := &MdFlag_todo{
+		Ts:       daily.DefaultTime(),
+		Range:    365,
+		Count:    7,
+		Category: daily.DefaultCategory(),
+	}
+
+	// [cmd args flags]
+	vargs, vsets := daily.ParseFlagSet(input.Args)
+	if len(vargs) > 1 {
+		control.Category = vargs[1]
+		if len(vargs) > 2 {
+			control.Ts = vargs[2]
+		}
+	}
+	set := flag.NewFlagSet("todo", flag.ContinueOnError)
+	set.StringVar(&control.Ts, "t", control.Ts, "指定日期")
+	set.IntVar(&control.Count, "n", control.Count, "指定个数")
+	set.IntVar(&control.Range, "r", control.Range, "指定范围(天数)")
+	set.StringVar(&control.Category, "c", control.Category, "指定类别")
+
+	set.Parse(vsets)
+
+	var (
+		sign int
+		xnow time.Time = time.Now()
+	)
+
+	if xnow0, err0 := time.Parse(daily.TimeDailyLayout, control.Ts); err0 == nil {
+		xnow = xnow0
+	}
+	if control.Range > 0 {
+		sign = 1
+	} else {
+		sign = -1
+	}
+	// 读取日志
+	for count := 0; sign*count != control.Range; count++ {
+		xnow := xnow.AddDate(0, 0, -1*sign*count)
+		_, _, dailyFile := input.Console.DailyPath(control.Category, xnow)
+
+		if len(flats) >= control.Count {
+			break
+		}
+
+		flatDaily := &MdFlatDaily{}
+		if err := flatDaily.ReadFrom(dailyFile); err == nil {
+			flats = append(flats, flatDaily)
+		}
+	}
+	return
 }
