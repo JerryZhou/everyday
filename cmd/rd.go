@@ -189,6 +189,7 @@ func Exec_RdDaily(input *daily.InputContext) {
 type RdFlag_Ls struct {
 	Ts       string
 	Count    int
+	MaxRange int
 	Category string
 }
 
@@ -249,6 +250,7 @@ func rd_ls(input *daily.InputContext, dogress bool) (notes []*Note) {
 		Ts:       "", // time.Now().Format(daily.TimeLayout)
 		Count:    -1,
 		Category: daily.DefaultCategory(),
+		MaxRange: 365, // one year
 	}
 
 	// [cmd args flags]
@@ -262,6 +264,7 @@ func rd_ls(input *daily.InputContext, dogress bool) (notes []*Note) {
 	set := flag.NewFlagSet("ls", flag.ContinueOnError)
 	set.StringVar(&control.Ts, "t", control.Ts, "指定日期")
 	set.IntVar(&control.Count, "n", control.Count, "指定个数")
+	set.IntVar(&control.MaxRange, "r", control.MaxRange, "指定范围")
 	set.StringVar(&control.Category, "c", control.Category, "指定类别")
 
 	set.Parse(vsets)
@@ -316,6 +319,7 @@ func rd_edit(input *daily.InputContext) {
 		Ts:       daily.DefaultTime(),
 		Count:    -1,
 		Category: daily.DefaultCategory(),
+		MaxRange: 365, // one year
 	}
 
 	// [cmd args flags]
@@ -329,6 +333,7 @@ func rd_edit(input *daily.InputContext) {
 	set := flag.NewFlagSet("ls", flag.ContinueOnError)
 	set.StringVar(&control.Ts, "t", control.Ts, "指定日期")
 	set.IntVar(&control.Count, "n", control.Count, "指定个数")
+	set.IntVar(&control.MaxRange, "r", control.MaxRange, "指定范围")
 	set.StringVar(&control.Category, "c", control.Category, "指定类别")
 
 	set.Parse(vsets)

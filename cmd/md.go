@@ -10,6 +10,7 @@ import (
 	daily "jerry.com/everyday/daily"
 	depends "jerry.com/everyday/depends"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -115,6 +116,7 @@ var (
 
 // 列表等级
 // 从 1开始
+// TODO: refract this
 func (line *MdFlatLine) Depth() (depth int) {
 	strip := strings.TrimSpace(line.Line)
 	if len(strip) == 0 {
@@ -127,6 +129,8 @@ func (line *MdFlatLine) Depth() (depth int) {
 	} else if strings.HasPrefix(line.Line, "## ") {
 		depth = 2 * DepthWidth
 	} else if strings.HasPrefix(line.Line, "*") {
+		depth = 3 * DepthWidth
+	} else if b, _ := regexp.MatchString("^[1-9]\\. [^\n]*", line.Line); b {
 		depth = 3 * DepthWidth
 	} else {
 		for _, v := range line.Line {
